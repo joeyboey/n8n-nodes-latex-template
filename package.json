@@ -1,7 +1,7 @@
 {
 	"name": "n8n-nodes-latex-template",
 	"version": "0.1.0",
-	"description": "",
+	"description": "n8n Node to fill LaTeX Templates",
 	"license": "MIT",
 	"homepage": "",
 	"keywords": [
@@ -29,7 +29,7 @@
 	],
 	"n8n": {
 		"n8nNodesApiVersion": 1,
-		"strict": true,
+		"strict": false,
 		"credentials": [],
 		"nodes": [
 			"dist/nodes/LatexTemplate/LatexTemplate.node.js"
