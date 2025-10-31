@@ -33,7 +33,7 @@ export class LatexTemplate implements INodeType {
 				required: true,
 				placeholder: '/path/to/invoice-template.tex',
 				description: 'Path to the LaTeX template file containing \\newcommand definitions',
-				hint: 'Variables will be auto-discovered from the template',
+				hint: 'Template variables will be auto-discovered and shown below for mapping',
 			},
 			{
 				displayName: 'Template Variables',
@@ -55,32 +55,18 @@ export class LatexTemplate implements INodeType {
 						supportAutoMap: true,
 					},
 				},
-				description: 'Map your workflow data to template variables discovered in the LaTeX file',
+				description:
+					'Map your workflow data to template variables. Use the "Match by Field Name" button to auto-map matching fields.',
 			},
 			{
-				displayName: 'Options',
-				name: 'options',
-				type: 'collection',
-				placeholder: 'Add Option',
-				default: {},
-				options: [
-					{
-						displayName: 'Output File Name',
-						name: 'outputFileName',
-						type: 'string',
-						default: '',
-						placeholder: 'invoice-{{$json.invoiceNumber}}.tex',
-						description:
-							'File name for output. If empty, uses template filename with "-filled" suffix.',
-					},
-					{
-						displayName: 'Output Binary Property',
-						name: 'outputBinaryProperty',
-						type: 'string',
-						default: 'data',
-						description: 'Binary property name for the filled template',
-					},
-				],
+				displayName: 'Output File Name',
+				name: 'outputFileName',
+				type: 'string',
+				default: '',
+				placeholder: 'invoice-{{$json.invoiceNumber}}.tex',
+				description:
+					'File name for the filled template. If empty, auto-generates from template name with "-filled" suffix.',
+				hint: 'Supports expressions like {{$json.fieldName}}. Use with "Write Binary File" node to save to disk.',
 			},
 		],
 	};
@@ -110,21 +96,13 @@ export class LatexTemplate implements INodeType {
 				const processor = LatexTemplateProcessor.fromFile(templatePath);
 				const filledBuffer = processor.process(templateData);
 
-				// Get options
-				const options = this.getNodeParameter('options', i, {}) as {
-					outputFileName?: string;
-					outputBinaryProperty?: string;
-				};
-
-				// Generate output filename
-				let outputFileName = options.outputFileName || '';
+				// Get output filename (auto-generate if not provided)
+				let outputFileName = this.getNodeParameter('outputFileName', i, '') as string;
 				if (!outputFileName || outputFileName.trim() === '') {
 					// Auto-generate: template-name-filled.tex
 					const parsed = path.parse(templatePath);
 					outputFileName = `${parsed.name}-filled${parsed.ext}`;
 				}
-
-				const outputBinaryProperty = options.outputBinaryProperty || 'data';
 
 				// Create binary output
 				const outputBinary = await this.helpers.prepareBinaryData(
@@ -148,7 +126,7 @@ export class LatexTemplate implements INodeType {
 						outputSize: filledBuffer.length,
 					},
 					binary: {
-						[outputBinaryProperty]: outputBinary,
+						data: outputBinary,
 					},
 					pairedItem: i,
 				});

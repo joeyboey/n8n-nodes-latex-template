@@ -6,7 +6,7 @@
 import * as fs from 'fs';
 
 /**
- * Escape special regex characters in strings
+ * Escape special regex characters in variable names
  */
 function escapeRegex(str: string): string {
 	return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -23,19 +23,10 @@ export class LatexTemplateProcessor {
 	 * Create processor from file path
 	 * @param filePath - Path to LaTeX template file
 	 * @returns New LatexTemplateProcessor instance
+	 * @throws Error if file cannot be read
 	 */
 	static fromFile(filePath: string): LatexTemplateProcessor {
 		const content = fs.readFileSync(filePath, 'utf-8');
-		return new LatexTemplateProcessor(content);
-	}
-
-	/**
-	 * Create processor from binary buffer
-	 * @param buffer - Binary data containing LaTeX template
-	 * @returns New LatexTemplateProcessor instance
-	 */
-	static fromBinary(buffer: Buffer): LatexTemplateProcessor {
-		const content = buffer.toString('utf-8');
 		return new LatexTemplateProcessor(content);
 	}
 
@@ -49,16 +40,12 @@ export class LatexTemplateProcessor {
 	 * Returns: { name: "John Doe" }
 	 */
 	extractVariables(): Record<string, string> {
-		// Match: \newcommand{\varname}{value}
-		// Group 1: variable name
-		// Group 2: current value
 		const regex = /\\newcommand\{\\(\w+)\}\{([^}]*)\}/g;
 		const variables: Record<string, string> = {};
 
 		let match;
 		while ((match = regex.exec(this.content)) !== null) {
-			const varName = match[1];
-			const currentValue = match[2];
+			const [, varName, currentValue] = match;
 			variables[varName] = currentValue;
 		}
 
@@ -85,8 +72,6 @@ export class LatexTemplateProcessor {
 		let output = this.content;
 
 		for (const [varName, newValue] of Object.entries(data)) {
-			// Match: \newcommand{\varname}{anything}
-			// Replace with: \newcommand{\varname}{newValue}
 			const regex = new RegExp(`\\\\newcommand\\{\\\\${escapeRegex(varName)}\\}\\{[^}]*\\}`, 'g');
 			const replacement = `\\newcommand{\\${varName}}{${newValue}}`;
 			output = output.replace(regex, replacement);
@@ -96,21 +81,12 @@ export class LatexTemplateProcessor {
 	}
 
 	/**
-	 * Convert filled template content back to binary buffer
-	 * @param content - Filled template content
-	 * @returns Buffer ready for n8n binary output
-	 */
-	toBuffer(content: string): Buffer {
-		return Buffer.from(content, 'utf-8');
-	}
-
-	/**
 	 * Complete processing: fill template and return as buffer
 	 * @param data - Variable mappings
-	 * @returns Buffer with filled template
+	 * @returns Buffer with filled template ready for binary output
 	 */
 	process(data: Record<string, string>): Buffer {
 		const filled = this.fillTemplate(data);
-		return this.toBuffer(filled);
+		return Buffer.from(filled, 'utf-8');
 	}
 }
