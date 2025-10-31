@@ -3,6 +3,8 @@
  * Handles parsing and filling of LaTeX templates with \newcommand definitions
  */
 
+import * as fs from 'fs';
+
 /**
  * Escape special regex characters in strings
  */
@@ -15,6 +17,16 @@ export class LatexTemplateProcessor {
 
 	constructor(content: string) {
 		this.content = content;
+	}
+
+	/**
+	 * Create processor from file path
+	 * @param filePath - Path to LaTeX template file
+	 * @returns New LatexTemplateProcessor instance
+	 */
+	static fromFile(filePath: string): LatexTemplateProcessor {
+		const content = fs.readFileSync(filePath, 'utf-8');
+		return new LatexTemplateProcessor(content);
 	}
 
 	/**

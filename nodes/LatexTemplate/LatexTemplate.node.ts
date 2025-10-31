@@ -5,8 +5,10 @@ import type {
 	INodeTypeDescription,
 } from 'n8n-workflow';
 import { NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
+import * as path from 'path';
 
 import { LatexTemplateProcessor } from './LatexTemplateProcessor';
+import { getTemplateFields } from './methods/resourceMapping';
 
 export class LatexTemplate implements INodeType {
 	description: INodeTypeDescription = {
@@ -24,53 +26,36 @@ export class LatexTemplate implements INodeType {
 		usableAsTool: true,
 		properties: [
 			{
-				displayName: 'Input Binary Property',
-				name: 'binaryProperty',
+				displayName: 'Template File Path',
+				name: 'templatePath',
 				type: 'string',
-				default: 'data',
+				default: '',
 				required: true,
-				placeholder: 'data',
-				description: 'Name of the binary property containing the LaTeX template file',
-				hint: 'Use "Read Binary File" node before this to load your template',
+				placeholder: '/path/to/invoice-template.tex',
+				description: 'Path to the LaTeX template file containing \\newcommand definitions',
+				hint: 'Variables will be auto-discovered from the template',
 			},
 			{
-				displayName: 'Variable Mappings',
-				name: 'mappings',
-				type: 'fixedCollection',
-				typeOptions: {
-					multipleValues: true,
-					multipleValueButtonText: 'Add Variable',
+				displayName: 'Template Variables',
+				name: 'templateVariables',
+				type: 'resourceMapper',
+				noDataExpression: true,
+				default: {
+					mappingMode: 'defineBelow',
+					value: null,
 				},
-				default: {},
-				placeholder: 'Add Variable Mapping',
-				description: 'Map your workflow data to LaTeX template variables',
-				options: [
-					{
-						name: 'mapping',
-						displayName: 'Mapping',
-						values: [
-							{
-								displayName: 'Variable Name',
-								name: 'variable',
-								type: 'string',
-								default: '',
-								required: true,
-								placeholder: 'invoiceNumber',
-								description: 'LaTeX variable name from \\newcommand definition',
-								hint: 'Example: For \\newcommand{\\price}{400}, use "price"',
-							},
-							{
-								displayName: 'Value',
-								name: 'value',
-								type: 'string',
-								default: '',
-								placeholder: '={{$json.number}}',
-								description: 'New value to set (supports n8n expressions)',
-								hint: 'Use ={{$json.fieldName}} to reference input data',
-							},
-						],
+				required: true,
+				typeOptions: {
+					resourceMapper: {
+						resourceMapperMethod: 'getTemplateFields',
+						mode: 'map',
+						valuesLabel: 'Variable Values',
+						addAllFields: true,
+						multiKeyMatch: false,
+						supportAutoMap: true,
 					},
-				],
+				},
+				description: 'Map your workflow data to template variables discovered in the LaTeX file',
 			},
 			{
 				displayName: 'Options',
@@ -80,23 +65,30 @@ export class LatexTemplate implements INodeType {
 				default: {},
 				options: [
 					{
+						displayName: 'Output File Name',
+						name: 'outputFileName',
+						type: 'string',
+						default: '',
+						placeholder: 'invoice-{{$json.invoiceNumber}}.tex',
+						description:
+							'File name for output. If empty, uses template filename with "-filled" suffix.',
+					},
+					{
 						displayName: 'Output Binary Property',
 						name: 'outputBinaryProperty',
 						type: 'string',
 						default: 'data',
-						description: 'Name of the binary property to store the filled template',
-					},
-					{
-						displayName: 'Output File Name',
-						name: 'outputFileName',
-						type: 'string',
-						default: 'filled-template.tex',
-						placeholder: 'invoice-{{$json.invoiceNumber}}.tex',
-						description: 'File name for the output (supports expressions)',
+						description: 'Binary property name for the filled template',
 					},
 				],
 			},
 		],
+	};
+
+	methods = {
+		resourceMapping: {
+			getTemplateFields,
+		},
 	};
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
@@ -105,42 +97,36 @@ export class LatexTemplate implements INodeType {
 
 		for (let i = 0; i < items.length; i++) {
 			try {
-				// Get input binary property name
-				const binaryProperty = this.getNodeParameter('binaryProperty', i) as string;
+				// Get template file path
+				const templatePath = this.getNodeParameter('templatePath', i) as string;
 
-				// Assert binary data exists
-				this.helpers.assertBinaryData(i, binaryProperty);
-
-				// Get binary buffer
-				const buffer = await this.helpers.getBinaryDataBuffer(i, binaryProperty);
-
-				// Get variable mappings from UI
-				const mappingsParam = this.getNodeParameter('mappings', i, {}) as {
-					mapping?: Array<{ variable: string; value: string }>;
+				// Get mapped variables from resourceMapper
+				const mappedVariables = this.getNodeParameter('templateVariables', i) as {
+					value?: Record<string, string>;
 				};
-				const mappings = mappingsParam.mapping || [];
+				const templateData = mappedVariables.value || {};
 
-				// Convert mappings array to object for processor
-				const templateData: Record<string, string> = {};
-				for (const m of mappings) {
-					if (m.variable && m.value !== undefined && m.value !== '') {
-						templateData[m.variable] = String(m.value);
-					}
-				}
-
-				// Process template
-				const processor = LatexTemplateProcessor.fromBinary(buffer);
+				// Load and process template from file
+				const processor = LatexTemplateProcessor.fromFile(templatePath);
 				const filledBuffer = processor.process(templateData);
 
 				// Get options
 				const options = this.getNodeParameter('options', i, {}) as {
-					outputBinaryProperty?: string;
 					outputFileName?: string;
+					outputBinaryProperty?: string;
 				};
-				const outputBinaryProperty = options.outputBinaryProperty || 'data';
-				const outputFileName = options.outputFileName || 'filled-template.tex';
 
-				// Create output binary data
+				// Generate output filename
+				let outputFileName = options.outputFileName || '';
+				if (!outputFileName || outputFileName.trim() === '') {
+					// Auto-generate: template-name-filled.tex
+					const parsed = path.parse(templatePath);
+					outputFileName = `${parsed.name}-filled${parsed.ext}`;
+				}
+
+				const outputBinaryProperty = options.outputBinaryProperty || 'data';
+
+				// Create binary output
 				const outputBinary = await this.helpers.prepareBinaryData(
 					filledBuffer,
 					outputFileName,
@@ -154,11 +140,11 @@ export class LatexTemplate implements INodeType {
 				returnData.push({
 					json: {
 						success: true,
+						templatePath,
 						fileName: outputFileName,
 						templateVariables: Object.keys(templateVariables),
 						variablesReplaced: Object.keys(templateData),
 						replacementCount: Object.keys(templateData).length,
-						templateSize: buffer.length,
 						outputSize: filledBuffer.length,
 					},
 					binary: {
