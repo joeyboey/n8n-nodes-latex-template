@@ -1,6 +1,6 @@
 {
 	"name": "n8n-nodes-latex-template",
-	"version": "0.1.1",
+	"version": "0.2.0",
 	"description": "n8n Node to fill LaTeX Templates",
 	"license": "MIT",
 	"homepage": "",
